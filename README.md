@@ -105,7 +105,7 @@ docker run -d \
 Dockerfile 내부에는 다음과 같은 최적의 자가 진단 헬스 체크가 기재되어 컨테이너 상태를 실시간 보증합니다:
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=5s \
-    CMD python -c "import requests; requests.get('http://localhost:5000/planning/api/status')"
+    CMD python -c "import requests; requests.get('http://localhost:5000/api/status')"
 ```
 
 ---
