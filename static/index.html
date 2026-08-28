@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holyseeds App Catalog</title>
+    <!-- Modern Google Fonts: Inter for English and Noto Sans KR for Korean -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- FontAwesome for high-quality professional icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header Section -->
+        <header class="catalog-header">
+            <div class="header-main">
+                <div class="logo-area">
+                    <span class="logo-icon"><i class="fa-solid fa-cubes-stacked"></i></span>
+                    <div class="logo-text">
+                        <h1>Holyseeds</h1>
+                        <p class="subtitle">Production Web App Catalog</p>
+                    </div>
+                </div>
+                <div class="stats-container">
+                    <div class="stat-card" id="stat-total">
+                        <span class="stat-value">-</span>
+                        <span class="stat-label">전체 웹앱</span>
+                    </div>
+                    <div class="stat-card" id="stat-running">
+                        <span class="stat-value">-</span>
+                        <span class="stat-label"><span class="status-dot dot-running"></span>가동 중</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Controls Section -->
+        <section class="controls-bar">
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="text" id="search-input" placeholder="앱 이름, 하위 경로(Prefix) 또는 레포지토리 검색..." autocomplete="off">
+                <button id="clear-search" class="clear-btn" style="display: none;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <button id="refresh-btn" class="btn btn-primary">
+                <i class="fa-solid fa-arrows-rotate"></i> 새로고침
+            </button>
+        </section>
+
+        <!-- Alert/Status Banner -->
+        <div id="status-banner" class="status-banner" style="display: none;"></div>
+
+        <!-- Main Content (Catalog Grid) -->
+        <main class="catalog-content">
+            <div id="loading-spinner" class="spinner-container">
+                <div class="loading-spinner"></div>
+                <p>Coolify API로부터 서비스 정보를 불러오는 중입니다...</p>
+            </div>
+
+            <!-- Grid containing application cards -->
+            <div id="catalog-grid" class="catalog-grid" style="display: none;"></div>
+
+            <!-- No Results State -->
+            <div id="no-results" class="no-results-container" style="display: none;">
+                <i class="fa-regular fa-folder-open empty-icon"></i>
+                <h3>일치하는 애플리케이션이 없습니다</h3>
+                <p>검색어를 확인하거나 전체 목록을 확인해보세요.</p>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="catalog-footer">
+            <p>&copy; 2026 Holyseeds. All rights reserved. Powered by Coolify API & FastAPI.</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
