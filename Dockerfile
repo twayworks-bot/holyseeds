@@ -4,6 +4,7 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV DATA_DIR=/app/data
 
 # Set work directory
 WORKDIR /app
@@ -15,7 +16,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY catalog_app.py .
 COPY coolify_api.py .
+COPY database.py .
 COPY static/ static/
+
+# Prepare persistent data volume directory for SQLite DB and uploaded assets
+RUN mkdir -p /app/data/uploads
+VOLUME ["/app/data"]
 
 # Expose the application port
 EXPOSE 5000

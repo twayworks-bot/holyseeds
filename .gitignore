@@ -154,3 +154,7 @@ Thumbs.db
 # GitHub Sync Script & Private Configurations
 syncgithub.env
 syncgithub.py
+
+# Persistent data directory (SQLite DB and user uploads)
+data/
+catalog.db

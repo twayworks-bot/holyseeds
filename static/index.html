@@ -20,8 +20,11 @@
                 <div class="logo-area">
                     <span class="logo-icon"><i class="fa-solid fa-cubes-stacked"></i></span>
                     <div class="logo-text">
-                        <h1>Holyseeds</h1>
-                        <p class="subtitle">Production Web App Catalog</p>
+                        <div class="title-with-badge">
+                            <h1 id="catalog-title">Holyseeds</h1>
+                            <span class="env-badge" id="env-badge">production</span>
+                        </div>
+                        <p class="subtitle" id="catalog-subtitle">Production Web App Catalog &bull; SQLite DB Synced</p>
                     </div>
                 </div>
                 <div class="stats-container">
@@ -41,13 +44,13 @@
         <section class="controls-bar">
             <div class="search-box">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" id="search-input" placeholder="앱 이름, 하위 경로(Prefix) 또는 레포지토리 검색..." autocomplete="off">
+                <input type="text" id="search-input" placeholder="앱 명칭, 설명, 하위 경로(Prefix) 또는 컨테이너 검색..." autocomplete="off">
                 <button id="clear-search" class="clear-btn" style="display: none;">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
             <button id="refresh-btn" class="btn btn-primary">
-                <i class="fa-solid fa-arrows-rotate"></i> 새로고침
+                <i class="fa-solid fa-arrows-rotate"></i> 새로고침 및 동기화
             </button>
         </section>
 
@@ -58,7 +61,7 @@
         <main class="catalog-content">
             <div id="loading-spinner" class="spinner-container">
                 <div class="loading-spinner"></div>
-                <p>Coolify API로부터 서비스 정보를 불러오는 중입니다...</p>
+                <p>Coolify API 및 SQLite DB로부터 서비스 정보를 동기화하는 중입니다...</p>
             </div>
 
             <!-- Grid containing application cards -->
@@ -74,9 +77,198 @@
 
         <!-- Footer -->
         <footer class="catalog-footer">
-            <p>&copy; 2026 Holyseeds. All rights reserved. Powered by Coolify API & FastAPI.</p>
+            <p>&copy; 2026 Holyseeds. All rights reserved. Powered by Coolify API, SQLite DB & FastAPI.</p>
         </footer>
     </div>
+
+    <!-- Application Detail & Metadata Edit Modal (Dual-Column Detailed View) -->
+    <div id="metadata-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-dialog modal-dialog-lg">
+            <div class="modal-header">
+                <div class="modal-title-area">
+                    <span class="modal-icon"><i class="fa-solid fa-sliders"></i></span>
+                    <div>
+                        <div class="modal-title-row">
+                            <h3 id="modal-app-name">웹앱 상세보기 및 메타데이터 편집</h3>
+                            <span id="modal-status-pill" class="status-pill running">
+                                <span class="status-dot dot-running"></span>
+                                <span id="modal-status-text">가동 중</span>
+                            </span>
+                        </div>
+                        <span id="modal-app-uuid" class="modal-uuid"></span>
+                    </div>
+                </div>
+                <button type="button" class="modal-close-btn" id="modal-close-btn" title="닫기">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body-split">
+                <!-- Left Column: Real-time System Details -->
+                <div class="modal-col modal-col-info">
+                    <h4 class="section-title"><i class="fa-solid fa-circle-info"></i> 웹앱 배포 및 운영 정보</h4>
+                    
+                    <div class="detail-info-list">
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-solid fa-link"></i> 서비스 URL</span>
+                            <span class="detail-value" id="detail-fqdn">
+                                <a href="#" target="_blank" id="detail-fqdn-link" rel="noopener noreferrer">-</a>
+                            </span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-solid fa-route"></i> 라우팅 경로 (Prefix)</span>
+                            <span class="detail-value"><code id="detail-prefix">/</code></span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-solid fa-box"></i> Docker 컨테이너명</span>
+                            <span class="detail-value"><code id="detail-container">-</code></span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-solid fa-layer-group"></i> 프로젝트 / 환경</span>
+                            <span class="detail-value" id="detail-project-env">-</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-brands fa-github"></i> Git 레포지토리</span>
+                            <span class="detail-value" id="detail-git">
+                                <a href="#" target="_blank" id="detail-git-link" rel="noopener noreferrer">-</a>
+                            </span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-solid fa-code-branch"></i> Git 브랜치</span>
+                            <span class="detail-value" id="detail-branch">-</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-solid fa-cubes"></i> 빌드팩</span>
+                            <span class="detail-value" id="detail-buildpack">-</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-solid fa-network-wired"></i> 노출 포트</span>
+                            <span class="detail-value" id="detail-port">-</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-regular fa-clock"></i> Coolify 최종 갱신</span>
+                            <span class="detail-value" id="detail-updated-at">-</span>
+                        </div>
+                        <div class="detail-info-item">
+                            <span class="detail-label"><i class="fa-solid fa-database"></i> DB 동기화 일시</span>
+                            <span class="detail-value" id="detail-synced-at">-</span>
+                        </div>
+                    </div>
+
+                    <!-- Live Card Preview -->
+                    <div class="live-preview-section">
+                        <span class="preview-label"><i class="fa-regular fa-eye"></i> 카탈로그 카드 실시간 미리보기</span>
+                        <div class="preview-card-outer">
+                            <div class="app-card preview-card" id="modal-preview-card">
+                                <!-- Injected dynamically by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: User Custom Metadata Editing Form -->
+                <form id="metadata-form" class="modal-col modal-col-form">
+                    <input type="hidden" id="edit-uuid">
+                    <h4 class="section-title"><i class="fa-solid fa-pen-nib"></i> 사용자 편의 메타데이터 편집</h4>
+
+                    <!-- Field 1: TITLE (명칭) -->
+                    <div class="form-group">
+                        <label for="edit-title">
+                            <span class="label-title"><i class="fa-solid fa-heading"></i> TITLE (웹앱 명칭)</span>
+                            <span class="label-desc">카탈로그 카드에 크게 표시될 친화적인 서비스명입니다.</span>
+                        </label>
+                        <input type="text" id="edit-title" class="form-control" placeholder="예: 성도 예배 및 좌석 예약 시스템">
+                    </div>
+
+                    <!-- Field 2: DESCRIPTION (설명) -->
+                    <div class="form-group">
+                        <label for="edit-description">
+                            <span class="label-title"><i class="fa-solid fa-align-left"></i> DESCRIPTION (서비스 설명)</span>
+                            <span class="label-desc">웹 애플리케이션의 주요 기능과 사용 목적을 간결히 설명합니다.</span>
+                        </label>
+                        <textarea id="edit-description" class="form-control" rows="3" placeholder="예: 온라인으로 원하는 예배와 좌석을 간편하게 예약하고 관리할 수 있는 서비스입니다."></textarea>
+                    </div>
+
+                    <!-- Field 3: ICON (대표 아이콘) -->
+                    <div class="form-group">
+                        <label for="edit-icon">
+                            <span class="label-title"><i class="fa-solid fa-icons"></i> ICON (대표 아이콘)</span>
+                            <span class="label-desc">FontAwesome 클래스명 직접 입력 또는 아래 프리셋 버튼을 클릭하세요.</span>
+                        </label>
+                        <div class="icon-input-row">
+                            <div class="icon-preview-box" id="icon-preview-box">
+                                <i class="fa-solid fa-cube"></i>
+                            </div>
+                            <input type="text" id="edit-icon" class="form-control" placeholder="fa-solid fa-calendar-check">
+                        </div>
+                        <!-- Quick Presets -->
+                        <div class="preset-icons-container">
+                            <span class="preset-label">추천 프리셋:</span>
+                            <div class="preset-icons-list" id="preset-icons">
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-calendar-check" title="예약/일정"><i class="fa-solid fa-calendar-check"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-church" title="교회/예배"><i class="fa-solid fa-church"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-sun" title="새벽/은혜"><i class="fa-solid fa-sun"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-hand-holding-heart" title="나눔/기부"><i class="fa-solid fa-hand-holding-heart"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-bullseye" title="다짐/목표"><i class="fa-solid fa-bullseye"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-clipboard-list" title="기획/계획"><i class="fa-solid fa-clipboard-list"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-shield-halved" title="인증/보안"><i class="fa-solid fa-shield-halved"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-mobile-screen" title="모바일"><i class="fa-solid fa-mobile-screen"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-shirt" title="패션/매거진"><i class="fa-solid fa-shirt"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-globe" title="웹/포털"><i class="fa-solid fa-globe"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-rocket" title="서비스"><i class="fa-solid fa-rocket"></i></button>
+                                <button type="button" class="preset-btn" data-icon="fa-solid fa-chart-pie" title="통계/관리"><i class="fa-solid fa-chart-pie"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Field 4: IMAGE (대표 이미지) -->
+                    <div class="form-group">
+                        <label for="edit-image">
+                            <span class="label-title"><i class="fa-solid fa-image"></i> IMAGE (대표 배너 이미지)</span>
+                            <span class="label-desc">웹 URL을 입력하거나 로컬 이미지 파일을 업로드하세요 (지속성 볼륨 저장).</span>
+                        </label>
+                        <div class="image-input-container">
+                            <div class="image-url-row">
+                                <input type="text" id="edit-image" class="form-control" placeholder="https://example.com/banner.jpg 또는 파일 업로드">
+                                <label class="btn btn-secondary file-upload-label" title="내 PC에서 이미지 파일 업로드">
+                                    <i class="fa-solid fa-arrow-up-from-bracket"></i> 이미지 업로드
+                                    <input type="file" id="image-file-input" accept="image/*" style="display: none;">
+                                </label>
+                            </div>
+                            <!-- Image Preview Box -->
+                            <div id="image-preview-wrapper" class="image-preview-wrapper" style="display: none;">
+                                <img id="image-preview-img" src="" alt="대표 이미지 미리보기">
+                                <button type="button" id="remove-image-btn" class="remove-image-btn" title="이미지 제거">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Form Buttons inside column for convenient access -->
+                    <div class="form-action-row">
+                        <button type="button" id="modal-reset-btn" class="btn btn-secondary" title="등록된 메타데이터를 초기화합니다">
+                            <i class="fa-solid fa-rotate-left"></i> 기본값 복원
+                        </button>
+                        <button type="submit" id="modal-save-btn" class="btn btn-primary">
+                            <i class="fa-solid fa-floppy-disk"></i> 메타데이터 저장하기
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <span class="modal-footer-hint"><i class="fa-solid fa-shield-check"></i> 저장된 메타데이터는 영구 볼륨(`DATA_DIR`)에 안전하게 보존됩니다.</span>
+                <div class="footer-right-buttons">
+                    <button type="button" id="modal-cancel-btn" class="btn btn-light">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
 
     <script src="app.js"></script>
 </body>
