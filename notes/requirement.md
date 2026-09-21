@@ -74,6 +74,23 @@
     - **우측 섹션**: TITLE, DESCRIPTION, ICON(추천 프리셋 팔레트 + 직접 입력), IMAGE(파일 업로드 + URL 입력 + 미리보기/삭제) 편집 폼.
     - **하단 섹션**: 기본값 복원 버튼, 저장 버튼.
 
+### 2.4 관리자 권한 및 로그인 검증 요구사항 (FR-AUTH)
+- **FR-AUTH-01 (중앙 Keycloak 인증 프록시 연동)**:
+  - 인증 검증 Base URL: `https://holyseeds.thewayworks.net/auth` (`AUTH_URL` 환경변수 지원).
+  - 세션 검증 API: `GET {AUTH_URL}/api/verify-session?require_role=super` (`auth_spec.md` 규격 준수).
+- **FR-AUTH-02 (권한 등급 식별 - Manager Flag = 2)**:
+  - `auth_spec.md`의 [패턴 0: 최고 관리자 권한 인증 (Super Admin / flag = "2")] 스펙 적용.
+  - `role_flag == "2"` 또는 `is_super == true`를 통해 최고 관리자 여부를 판별한다.
+- **FR-AUTH-03 (카드 내 "상세 및 편집" 기능 노출 제어)**:
+  - APP 카드 내 "상세 및 편집" 기능/버튼은 항상 로그인 검증을 통해 manager flag=2인지 확인한다.
+  - **로그인을 통해 manager flag=2인 경우에만** "상세 및 편집" 버튼 및 모달 진입 기능을 노출한다.
+  - **그 외의 경우**(비로그인, 세션 만료, 일반 사용자 flag=0, 일반 관리자 flag=1 등)는 "상세 및 편집" 버튼을 일체 노출하지 않으며 "바로가기" 단일 액션 버튼으로 자동 확장 전환한다.
+  - 비인가 상태에서 모달 직접 호출 시도시 토스트 알림을 통해 차단한다.
+- **FR-AUTH-04 (백엔드 API 보안 강제)**:
+  - `POST /api/apps/{uuid}/metadata` 및 `POST /api/upload` 엔드포인트는 요청 시 전달된 `auth_session` 쿠키를 기반으로 Keycloak Auth 검증을 수행하고, manager flag=2가 아닌 경우 `403 Forbidden` 에러로 처리한다.
+- **FR-AUTH-05 (헤더 인증 상태 표시 및 로그인 게이트웨이 유도)**:
+  - 카탈로그 헤더 우측에 인증 상태(최고관리자 flag=2 배지, 일반회원 배지, 또는 관리자 로그인 링크)를 제공하여 편리한 세션 제어를 지원한다.
+
 ---
 
 ## 3. 데이터베이스 스키마 정의 (Database Schema)

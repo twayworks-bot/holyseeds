@@ -104,3 +104,35 @@
     - 기본값 복원 버튼 및 실시간 저장 핸들러 구현.
   - **통합 볼륨 및 업로드 기능 검증**:
     - 파일 업로드 시 `data/uploads/`에 정확히 저장되고, `/uploads/...`로 정상 200 반환 및 영속성 보장 확인 완료.
+
+## [2026-09-21 22:20] Keycloak 기반 manager flag=2 로그인 검증 및 상세/편집 노출 제어 구현
+- **작업 내용**:
+  - **요구사항 접수**:
+    - APP 카드 내 "상세 및 편집" 기능은 항상 로그인 검증을 통해 manager flag=2인지 확인.
+    - 로그인 검증 스펙은 `C:\Dev\python\keycloak\auth_spec.md` 준수.
+    - 검증 대상 Auth URL: `https://holyseeds.thewayworks.net/auth`.
+    - manager flag=2인 경우에만 "상세 및 편집" 기능 노출, 그 외의 경우는 버튼을 노출하지 않음.
+  - **환경 변수 및 설정**:
+    - `.env`: `AUTH_URL=https://holyseeds.thewayworks.net/auth` 추가.
+  - **백엔드 구현 (`catalog_app.py`)**:
+    - `verify_auth_session(request)`: `auth_session` 쿠키 기반으로 `GET {AUTH_URL}/api/verify-session?require_role=super` 호출하여 `role_flag == "2"` 또는 `is_super == True` 판별.
+    - `GET /api/auth/verify`: 프론트엔드 검증용 엔드포인트 추가.
+    - `GET /api/config`: `auth_url` 포함하여 동적 반환.
+    - `POST /api/apps/{uuid}/metadata`: manager flag=2 권한 미충족 시 `403 Forbidden` 차단 처리.
+    - `POST /api/upload`: manager flag=2 권한 미충족 시 `403 Forbidden` 차단 처리.
+  - **프론트엔드 UI/UX 구현 (`static/app.js`, `static/index.html`, `static/style.css`)**:
+    - `static/app.js`:
+      - `currentUserAuth` 상태 관리 및 `isManagerFlag2()` 헬퍼 함수 구현.
+      - `verifyAuthStatus()`를 통해 세션 검증 후 권한 플래그 설정 및 UI 갱신.
+      - `createCardElement`: manager flag=2일 때만 "상세 및 편집" 버튼 렌더링. 그 외의 경우 "상세 및 편집" 버튼 미노출 및 `.single-action` 단일 "바로가기" 버튼으로 깔끔하게 확장 렌더링.
+      - 카드 배너/로고/타이틀 클릭 이벤트: manager flag=2일 때만 편집 모달 호출, 일반 사용자는 바로가기 URL 이동 처리.
+      - `openMetadataModal`: 비인가 시 토스트 알림을 통한 모달 진입 방어.
+    - `static/index.html` & `static/style.css`:
+      - 헤더 우측에 `auth-status-container` 배치: 최고관리자(flag=2) 배지, 일반회원 배지, 또는 관리자 로그인 링크 동적 표시.
+      - `.card-actions.single-action` 그리드 1fr 스타일 추가.
+  - **테스트 및 검증**:
+    - FastAPI TestClient 권한 매트릭스 검증:
+      1. 비인가 / 세션 미제공 시: verify 정상 invalid 반환, 메타데이터/업로드 403 차단.
+      2. 일반사용자 (flag=0) / 일반관리자 (flag=1) 시: 메타데이터/업로드 403 차단.
+      3. 최고관리자 (flag=2) 시: 메타데이터/업로드 정상 인가 (200/404).
+    - `node --check static/app.js`: 자바스크립트 문법 검증 통과.

@@ -2,6 +2,26 @@
 let allApps = [];
 let currentEditingApp = null;
 
+// Keycloak Authentication State Management (auth_spec.md)
+let authBaseUrl = "https://holyseeds.thewayworks.net/auth";
+let currentUserAuth = {
+    valid: false,
+    is_manager: false,
+    is_super: false,
+    role_flag: "0",
+    has_required_role: false,
+    user: null
+};
+
+// Check if current user is Super Admin (manager flag == 2)
+function isManagerFlag2() {
+    return Boolean(
+        currentUserAuth &&
+        currentUserAuth.valid &&
+        (currentUserAuth.role_flag === "2" || currentUserAuth.is_super === true)
+    );
+}
+
 // List of high-quality premium linear gradients for procedurally generated application logos
 const APP_GRADIENTS = [
     "linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%)", // Blue-Indigo
@@ -78,9 +98,129 @@ async function fetchConfig() {
             if (badgeElem && config.production) {
                 badgeElem.textContent = config.production;
             }
+            if (config.auth_url) {
+                authBaseUrl = config.auth_url.replace(/\/+$/, "");
+            }
         }
     } catch (e) {
         console.warn("Config fetch failed:", e);
+    }
+}
+
+// Verify user authentication with Keycloak Auth Proxy (auth_spec.md)
+async function verifyAuthStatus() {
+    try {
+        let authData = null;
+        
+        // 1. First attempt to check via backend endpoint /api/auth/verify (passes auth_session cookie)
+        try {
+            const res = await fetch("/api/auth/verify", {
+                credentials: "include",
+                headers: { "Accept": "application/json" }
+            });
+            if (res.ok) {
+                authData = await res.json();
+            }
+        } catch (err) {
+            console.warn("Backend auth verification endpoint failed, will attempt direct auth:", err);
+        }
+
+        // 2. If backend verification returned valid: false, attempt direct verification against authBaseUrl
+        if (!authData || !authData.valid) {
+            try {
+                const directUrl = `${authBaseUrl}/api/verify-session?require_role=super`;
+                const directRes = await fetch(directUrl, {
+                    credentials: "include",
+                    headers: { "Accept": "application/json" }
+                });
+                if (directRes.ok) {
+                    const directData = await directRes.json();
+                    if (directData && directData.valid) {
+                        authData = directData;
+                    }
+                }
+            } catch (directErr) {
+                // Direct fetch might be blocked by CORS or network, keep previous result
+            }
+        }
+
+        if (authData) {
+            currentUserAuth = {
+                valid: Boolean(authData.valid),
+                is_manager: Boolean(authData.is_manager),
+                is_super: Boolean(authData.is_super || authData.role_flag === "2" || authData.has_required_role),
+                role_flag: String(authData.role_flag || "0"),
+                has_required_role: Boolean(authData.has_required_role || authData.is_super || authData.role_flag === "2"),
+                user: authData.user || null
+            };
+        } else {
+            currentUserAuth = {
+                valid: false,
+                is_manager: false,
+                is_super: false,
+                role_flag: "0",
+                has_required_role: false,
+                user: null
+            };
+        }
+    } catch (e) {
+        console.error("Auth status verification failed:", e);
+        currentUserAuth = { valid: false, is_manager: false, is_super: false, role_flag: "0", has_required_role: false, user: null };
+    }
+
+    renderAuthStatusUI();
+
+    // If applications were already loaded, re-render catalog cards to reflect auth state changes
+    if (allApps && allApps.length > 0) {
+        const searchInput = document.getElementById("search-input");
+        const query = (searchInput?.value || "").trim();
+        if (query) {
+            handleSearch({ target: { value: query } });
+        } else {
+            renderCatalog(allApps);
+        }
+    }
+}
+
+// Render Header Auth Status (Badge or Login button)
+function renderAuthStatusUI() {
+    const container = document.getElementById("auth-status-container");
+    if (!container) return;
+
+    const currentRedirect = encodeURIComponent(window.location.href);
+
+    if (currentUserAuth.valid) {
+        const userName = (currentUserAuth.user && (currentUserAuth.user.name || currentUserAuth.user.username)) || "사용자";
+        if (isManagerFlag2()) {
+            container.innerHTML = `
+                <div class="auth-badge-box auth-manager" title="최고 관리자(manager flag=2)로 인증되었습니다. 상세 및 편집 기능이 활성화됩니다.">
+                    <i class="fa-solid fa-shield-halved auth-icon"></i>
+                    <span class="auth-user-name">${escapeHtml(userName)}</span>
+                    <span class="auth-role-tag">flag=2</span>
+                    <a href="${authBaseUrl}/logout" class="auth-action-link" title="로그아웃">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </a>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="auth-badge-box auth-general" title="일반 사용자(flag=${escapeHtml(currentUserAuth.role_flag)})로 로그인되었습니다. 편집 권한이 없습니다.">
+                    <i class="fa-solid fa-user auth-icon"></i>
+                    <span class="auth-user-name">${escapeHtml(userName)}</span>
+                    <span class="auth-role-tag">flag=${escapeHtml(currentUserAuth.role_flag)}</span>
+                    <a href="${authBaseUrl}/logout" class="auth-action-link" title="로그아웃">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </a>
+                </div>
+            `;
+        }
+    } else {
+        container.innerHTML = `
+            <a href="${authBaseUrl}/login?redirect=${currentRedirect}&require_role=super" class="auth-login-link" title="최고 관리자(manager flag=2) 로그인">
+                <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                <span>관리자 로그인</span>
+            </a>
+        `;
     }
 }
 
@@ -163,13 +303,15 @@ function createCardElement(app, isPreview = false) {
     const githubUrl = getGithubUrl(app.git_repository);
     const containerDisplay = app.container_name || app.name || "container";
 
+    const canEdit = !isPreview && isManagerFlag2();
+
     // Representative Image Banner
     let bannerHtml = "";
     if (app.image) {
         bannerHtml = `
-            <div class="card-banner-wrapper" ${!isPreview ? `onclick="openMetadataModal('${app.uuid}')"` : ""} title="상세보기 및 편집">
+            <div class="card-banner-wrapper ${canEdit ? "clickable-edit" : ""}" ${canEdit ? `onclick="openMetadataModal('${app.uuid}')" title="상세보기 및 편집"` : `onclick="window.open('${escapeHtml(app.fqdn)}', '_blank')"`}>
                 <img src="${escapeHtml(app.image)}" alt="${escapeHtml(app.title || app.name)}" class="card-banner-img" onerror="this.parentElement.style.display='none'">
-                <div class="card-banner-overlay"></div>
+                ${canEdit ? `<div class="card-banner-overlay"></div>` : ""}
             </div>
         `;
     }
@@ -187,14 +329,19 @@ function createCardElement(app, isPreview = false) {
         originalNameBadge = `<div class="app-original-badge" title="Coolify 원래 명칭"><i class="fa-solid fa-cube"></i> ${escapeHtml(app.name)}</div>`;
     }
 
-    // Action button area
+    // Action button area (상세 및 편집 버튼은 manager flag=2인 경우에만 노출)
     let actionsHtml = "";
     if (!isPreview) {
+        const hasManagerFlag2 = isManagerFlag2();
+        const editBtnHtml = hasManagerFlag2 ? `
+            <button type="button" class="btn btn-detail-edit" onclick="openMetadataModal('${app.uuid}')" title="웹앱 배포 상세정보 및 메타데이터 편집">
+                <i class="fa-solid fa-sliders"></i> 상세 및 편집
+            </button>
+        ` : "";
+
         actionsHtml = `
-            <div class="card-actions">
-                <button type="button" class="btn btn-detail-edit" onclick="openMetadataModal('${app.uuid}')" title="웹앱 배포 상세정보 및 메타데이터 편집">
-                    <i class="fa-solid fa-sliders"></i> 상세 및 편집
-                </button>
+            <div class="card-actions ${hasManagerFlag2 ? "" : "single-action"}">
+                ${editBtnHtml}
                 <a href="${escapeHtml(app.fqdn)}" target="_blank" rel="noopener noreferrer" class="btn btn-launch" title="웹 서비스 바로가기">
                     <i class="fa-solid fa-arrow-up-right-from-square"></i> 바로가기
                 </a>
@@ -202,19 +349,15 @@ function createCardElement(app, isPreview = false) {
         `;
     }
 
-    // Top-right edit button
-    const editBtnHtml = !isPreview ? `
-        <button type="button" class="btn-card-edit" title="상세보기 및 메타데이터 설정" onclick="openMetadataModal('${app.uuid}')">
-            <i class="fa-solid fa-pen-to-square"></i> 편집
-        </button>
-    ` : "";
+    // Top-right edit button (하단 '상세 및 편집' 버튼과 기능이 동일하여 중복 노출 방지를 위해 비노출 처리)
+    const editBtnHtml = "";
 
     card.innerHTML = `
         ${bannerHtml}
         <div class="card-body-content">
             <div class="card-top-row">
                 <div class="card-top-left">
-                    <div class="app-logo-container" style="background: ${bgGradient}" ${!isPreview ? `onclick="openMetadataModal('${app.uuid}')"` : ""} title="상세보기">
+                    <div class="app-logo-container ${canEdit ? "clickable-edit" : ""}" style="background: ${bgGradient}" ${canEdit ? `onclick="openMetadataModal('${app.uuid}')" title="상세보기 및 편집"` : `onclick="window.open('${escapeHtml(app.fqdn)}', '_blank')"`}>
                         ${logoInner}
                     </div>
                     <div class="status-pill ${statusClass}">
@@ -228,7 +371,7 @@ function createCardElement(app, isPreview = false) {
             </div>
 
             <div class="title-block">
-                <h3 class="app-title" ${!isPreview ? `onclick="openMetadataModal('${app.uuid}')"` : ""} title="클릭하여 상세 정보 및 편집 열기">
+                <h3 class="app-title ${canEdit ? "clickable-edit" : ""}" ${canEdit ? `onclick="openMetadataModal('${app.uuid}')" title="클릭하여 상세 정보 및 편집 열기"` : `onclick="window.open('${escapeHtml(app.fqdn)}', '_blank')"`}>
                     ${escapeHtml(displayTitle)}
                 </h3>
                 ${originalNameBadge}
@@ -354,6 +497,11 @@ function clearSearch() {
 // ==========================================================================
 
 function openMetadataModal(uuid) {
+    if (!isManagerFlag2()) {
+        showToast("접근 권한이 없습니다. '상세 및 편집' 기능은 manager flag=2(최고 관리자) 권한이 필요합니다.", "error");
+        return;
+    }
+
     const app = allApps.find(a => a.uuid === uuid);
     if (!app) return;
 
@@ -598,10 +746,11 @@ function handleResetMetadata() {
 }
 
 // Event Listeners Registration
-document.addEventListener("DOMContentLoaded", () => {
-    // Initial fetch config & applications
-    fetchConfig();
-    fetchApplications();
+document.addEventListener("DOMContentLoaded", async () => {
+    // Initial fetch config, verify auth status & applications
+    await fetchConfig();
+    await verifyAuthStatus();
+    await fetchApplications();
 
     // Search Box Bindings
     const searchInput = document.getElementById("search-input");
@@ -612,10 +761,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Refresh Button Binding
     const refreshBtn = document.getElementById("refresh-btn");
-    refreshBtn.addEventListener("click", () => {
+    refreshBtn.addEventListener("click", async () => {
         searchInput.value = "";
         clearBtn.style.display = "none";
-        fetchApplications();
+        await verifyAuthStatus();
+        await fetchApplications();
         showToast("Coolify API 및 DB 동기화가 완료되었습니다.", "success");
     });
 

@@ -10,7 +10,8 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File
+import requests
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -23,6 +24,67 @@ from coolify_api import CoolifyAPI, CoolifyAPIError
 load_dotenv()
 
 app = FastAPI(title="Holyseeds Coolify Catalog API")
+
+# Keycloak central authentication proxy base URL (auth_spec.md)
+AUTH_URL = os.getenv("AUTH_URL", "https://holyseeds.thewayworks.net/auth").rstrip("/")
+
+def verify_auth_session(request: Request) -> Dict[str, Any]:
+    """
+    Verifies user's session with Keycloak Auth Proxy according to auth_spec.md.
+    Pattern 0: Super Admin / manager flag == '2'.
+    """
+    session_id = request.cookies.get("auth_session")
+    if not session_id:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            session_id = auth_header.split(" ", 1)[1].strip()
+        elif request.query_params.get("session_id"):
+            session_id = request.query_params.get("session_id")
+
+    if not session_id:
+        return {
+            "valid": False,
+            "is_manager": False,
+            "is_super": False,
+            "role_flag": "0",
+            "roles": [],
+            "has_required_role": False,
+            "error": "No session ID provided"
+        }
+
+    verify_url = f"{AUTH_URL}/api/verify-session"
+    try:
+        resp = requests.get(
+            verify_url,
+            params={"session_id": session_id, "require_role": "super"},
+            cookies={"auth_session": session_id},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            role_flag = str(data.get("role_flag", "0"))
+            is_super = bool(data.get("is_super") or role_flag == "2" or data.get("has_required_role"))
+            return {
+                "valid": bool(data.get("valid")),
+                "is_manager": bool(data.get("is_manager")),
+                "is_super": is_super,
+                "role_flag": role_flag,
+                "roles": data.get("roles", []),
+                "has_required_role": is_super,
+                "user": data.get("user")
+            }
+    except Exception as e:
+        print(f"[Auth Session Check] Error verifying session with {verify_url}: {e}")
+
+    return {
+        "valid": False,
+        "is_manager": False,
+        "is_super": False,
+        "role_flag": "0",
+        "roles": [],
+        "has_required_role": False,
+        "error": "Verification failed"
+    }
 
 # Pydantic schema for metadata update
 class MetadataUpdateRequest(BaseModel):
@@ -147,13 +209,22 @@ def get_status():
         "production": catalog_service.target_production
     }
 
+@app.get("/api/auth/verify")
+def api_verify_auth(request: Request):
+    """
+    Session verification endpoint called by frontend.
+    Returns session validity, manager status, and manager flag=2 (is_super) status.
+    """
+    return verify_auth_session(request)
+
 @app.get("/api/config")
 def get_config():
-    """Returns current project, production, and instance information."""
+    """Returns current project, production, instance, and auth gateway information."""
     return {
         "project": catalog_service.target_project,
         "production": catalog_service.target_production,
-        "coolify_url": catalog_service.api.base_url if catalog_service.api else ""
+        "coolify_url": catalog_service.api.base_url if catalog_service.api else "",
+        "auth_url": AUTH_URL
     }
 
 @app.get("/api/apps")
@@ -231,10 +302,19 @@ def get_app_details(uuid: str):
     return app_data
 
 @app.post("/api/apps/{uuid}/metadata")
-def update_application_metadata(uuid: str, req: MetadataUpdateRequest):
+def update_application_metadata(uuid: str, req: MetadataUpdateRequest, request: Request):
     """
     Updates custom metadata (TITLE, DESCRIPTION, IMAGE, ICON) for an application.
+    Protected: Only authenticated users with manager flag=2 (Super Admin) are permitted.
     """
+    auth = verify_auth_session(request)
+    is_manager_flag_2 = auth.get("valid") and (auth.get("role_flag") == "2" or auth.get("is_super") is True)
+    if not is_manager_flag_2:
+        raise HTTPException(
+            status_code=403, 
+            detail="권한이 없습니다. '상세 및 편집' 기능은 manager flag=2(최고 관리자) 권한이 필요합니다."
+        )
+
     updated_app = database.update_app_metadata(
         uuid=uuid,
         custom_title=req.title,
@@ -247,11 +327,20 @@ def update_application_metadata(uuid: str, req: MetadataUpdateRequest):
     return updated_app
 
 @app.post("/api/upload")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(request: Request, file: UploadFile = File(...)):
     """
     Handles user image uploads for custom card representative images.
     Saves to static/uploads and returns the web-accessible URL.
+    Protected: Only authenticated users with manager flag=2 (Super Admin) are permitted.
     """
+    auth = verify_auth_session(request)
+    is_manager_flag_2 = auth.get("valid") and (auth.get("role_flag") == "2" or auth.get("is_super") is True)
+    if not is_manager_flag_2:
+        raise HTTPException(
+            status_code=403, 
+            detail="권한이 없습니다. 이미지 업로드는 manager flag=2(최고 관리자) 권한이 필요합니다."
+        )
+
     allowed_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
     ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
     if ext not in allowed_extensions:
